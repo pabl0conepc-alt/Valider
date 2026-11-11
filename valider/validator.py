@@ -76,17 +76,26 @@ class _PageMetadataParser(HTMLParser):
 
 
 def _normalize_domain(domain: str) -> str:
-    candidate = domain.strip().rstrip(".").encode("idna").decode("ascii").lower()
+    value = domain.strip()
+    if "://" in value or "/" in value:
+        raise ValueError(
+            f"--allow-domain expects a domain name only, not a URL ({domain!r}). "
+            "Pass the URL separately after the options."
+        )
+    try:
+        candidate = value.rstrip(".").encode("idna").decode("ascii").lower()
+    except UnicodeError as exc:
+        raise ValueError(f"Invalid authorized domain: {domain!r}") from exc
     if not candidate or len(candidate) > 253:
-        raise ValueError(f"Domínio inválido na allowlist: {domain!r}")
+        raise ValueError(f"Invalid authorized domain: {domain!r}")
     try:
         ipaddress.ip_address(candidate)
     except ValueError:
         pass
     else:
-        raise ValueError("A allowlist aceita nomes de domínio, não endereços IP.")
+        raise ValueError("The allowlist accepts domain names, not IP addresses.")
     if any(not _DNS_LABEL.fullmatch(label) for label in candidate.split(".")):
-        raise ValueError(f"Domínio inválido na allowlist: {domain!r}")
+        raise ValueError(f"Invalid authorized domain: {domain!r}")
     return candidate
 
 
@@ -210,11 +219,11 @@ class URLValidator:
     ) -> None:
         domains = [_normalize_domain(domain) for domain in allowed_domains]
         if not domains:
-            raise ValueError("Informe pelo menos um domínio autorizado.")
+            raise ValueError("Provide at least one authorized domain.")
         if not 1 <= timeout <= MAX_TIMEOUT:
-            raise ValueError("O timeout deve estar entre 1 e 30 segundos.")
+            raise ValueError("Timeout must be between 1 and 30 seconds.")
         if not 0 <= max_redirects <= MAX_REDIRECTS:
-            raise ValueError(f"O limite de redirecionamentos deve estar entre 0 e {MAX_REDIRECTS}.")
+            raise ValueError(f"Redirect limit must be between 0 and {MAX_REDIRECTS}.")
         self.allowed_domains = tuple(dict.fromkeys(domains))
         self.timeout = float(timeout)
         self.max_redirects = max_redirects
