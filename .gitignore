@@ -11,6 +11,7 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+rust/target/
 
 # Test and tool caches
 .pytest_cache/

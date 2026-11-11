@@ -1,12 +1,15 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
+#include <cstdint>
 #include <memory>
 #include <new>
 #include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
+
+extern "C" std::int32_t valider_http_status_class(std::uint16_t status);
 
 namespace {
 
@@ -236,12 +239,40 @@ PyMethodDef policy_methods[] = {
 
 PyTypeObject policy_type = {PyVarObject_HEAD_INIT(nullptr, 0)};
 
+PyObject* classify_http_status(PyObject*, PyObject* value) {
+    const long status = PyLong_AsLong(value);
+    if (status == -1 && PyErr_Occurred()) {
+        return nullptr;
+    }
+    if (status < 0 || status > 65535) {
+        PyErr_SetString(PyExc_ValueError, "HTTP status must be between 0 and 65535");
+        return nullptr;
+    }
+
+    static const char* names[] = {
+        "invalid", "informational", "success", "redirection", "client_error", "server_error"
+    };
+    const std::int32_t category =
+        valider_http_status_class(static_cast<std::uint16_t>(status));
+    if (category < 0 || category >= static_cast<std::int32_t>(sizeof(names) / sizeof(names[0]))) {
+        PyErr_SetString(PyExc_RuntimeError, "Rust returned an invalid HTTP status class");
+        return nullptr;
+    }
+    return PyUnicode_FromString(names[category]);
+}
+
+PyMethodDef module_methods[] = {
+    {"classify_http_status", classify_http_status, METH_O,
+     "Classify an HTTP response code using the Rust analysis core."},
+    {nullptr, nullptr, 0, nullptr},
+};
+
 PyModuleDef module_definition = {
     PyModuleDef_HEAD_INIT,
     "_native",
-    "C++ authorization and redirect-chain policy primitives.",
+    "C++ authorization policy and Rust HTTP status classification.",
     -1,
-    nullptr,
+    module_methods,
 };
 
 }  // namespace

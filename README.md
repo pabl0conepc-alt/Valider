@@ -30,7 +30,7 @@ managed system Python:
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential python3-dev python3 python3-venv git
+sudo apt install -y build-essential cargo rustc python3-dev python3 python3-venv git
 git clone <REPOSITORY_URL>
 cd Valider
 python3 -m venv .venv
@@ -122,6 +122,7 @@ be checked successfully.
 | `AUTHORS.md` | Records verified authorship and contributor acknowledgements. |
 | `setup.py` | Builds the C++17 policy extension as part of Python package installation. |
 | `valider/_native.cpp` | Implements typed domain authorization and redirect-chain state. |
+| `rust/src/lib.rs` | Classifies HTTP response status codes into neutral technical categories. |
 
 ## Development and tests
 
@@ -132,10 +133,10 @@ python -m pip install -e .
 python -m unittest discover -s tests -v
 ```
 
-Building the package requires a C++17 compiler and Python development headers.
-The native policy component enforces canonical domain matching, redirect
-budgets, and per-URL cycle tracking. DNS resolution, global-address checks,
-pinned HTTP/TLS connections, and response parsing remain in Python.
+Building the package requires C++17, Rust, and Python development toolchains.
+The C++ policy component enforces canonical domain matching and redirect-chain
+limits. Rust classifies HTTP status codes into neutral technical categories.
+DNS, global-address checks, and pinned HTTP/TLS connections remain in Python.
 
 Tests use injected DNS/HTTP functions and do not send requests to external
 hosts. Contributions must keep that property.

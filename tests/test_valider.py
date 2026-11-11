@@ -8,7 +8,7 @@ from pathlib import Path
 
 from valider.exporters import export_results
 from valider.cli import _load_urls, _parser
-from valider._native import DomainPolicy
+from valider._native import DomainPolicy, classify_http_status
 from valider.validator import URLResult, URLValidator, _Response
 
 
@@ -34,6 +34,13 @@ class NativePolicyTests(unittest.TestCase):
     def test_native_policy_rejects_noncanonical_domains(self):
         with self.assertRaisesRegex(ValueError, "canonical lowercase ASCII"):
             DomainPolicy(["Example.com"], 1)
+
+    def test_rust_status_classifier_returns_technical_categories(self):
+        self.assertEqual(classify_http_status(200), "success")
+        self.assertEqual(classify_http_status(302), "redirection")
+        self.assertEqual(classify_http_status(404), "client_error")
+        self.assertEqual(classify_http_status(503), "server_error")
+        self.assertEqual(classify_http_status(99), "invalid")
 
 
 class CLITests(unittest.TestCase):
@@ -155,6 +162,7 @@ class ValidatorTests(unittest.TestCase):
     def test_public_html_is_reported_as_technical_data(self):
         result = self.validator.validate("https://example.com/")
         self.assertEqual(result.outcome, "ok")
+        self.assertEqual(result.http_status_class, "success")
         self.assertEqual(result.title, "Service status")
         self.assertIn("INCONCLUSIVO", result.conclusion)
 
