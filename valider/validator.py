@@ -12,7 +12,12 @@ from html.parser import HTMLParser
 from typing import Callable, Iterable, Optional
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
-from ._native import DomainPolicy
+from ._native import (
+    DomainPolicy,
+    classify_http_status,
+    is_retryable_http_status,
+    parse_retry_after,
+)
 
 MAX_BODY_BYTES = 1_048_576
 MAX_URLS = 1_000
@@ -28,6 +33,9 @@ class URLResult:
     url: str
     outcome: str
     http_status: Optional[int] = None
+    http_status_class: Optional[str] = None
+    http_retryable_hint: Optional[bool] = None
+    retry_after_seconds: Optional[int] = None
     final_url: Optional[str] = None
     redirects: int = 0
     dns_ips: list[str] = field(default_factory=list)
@@ -275,6 +283,11 @@ class URLValidator:
                 self._wait_for_rate_limit()
                 response = self._requester(current, host, port, scheme, addresses[0], self.timeout)
                 result.http_status = response.status
+                result.http_status_class = classify_http_status(response.status)
+                result.http_retryable_hint = is_retryable_http_status(response.status)
+                retry_after = response.headers.get("retry-after")
+                if retry_after is not None:
+                    result.retry_after_seconds = parse_retry_after(retry_after.strip())
                 result.final_url = current
                 result.tls_version = response.tls_version or result.tls_version
                 result.tls_expires = response.tls_expires or result.tls_expires

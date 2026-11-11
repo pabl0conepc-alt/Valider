@@ -8,7 +8,12 @@ from pathlib import Path
 
 from valider.exporters import export_results
 from valider.cli import _load_urls, _parser
-from valider._native import DomainPolicy
+from valider._native import (
+    DomainPolicy,
+    classify_http_status,
+    is_retryable_http_status,
+    parse_retry_after,
+)
 from valider.validator import URLResult, URLValidator, _Response
 
 
@@ -31,9 +36,30 @@ class NativePolicyTests(unittest.TestCase):
         self.assertTrue(policy.visit_url("https://example.com/"))
         self.assertTrue(policy.follow_redirect())
 
+    def test_domain_policy_matches_against_a_large_allowlist(self):
+        domains = [f"site-{index}.example" for index in range(500)]
+        domains.append("example.com")
+        policy = DomainPolicy(domains, 2)
+        policy.begin()
+        self.assertTrue(policy.is_allowed("api.example.com"))
+        self.assertTrue(policy.is_allowed("site-499.example"))
+        self.assertFalse(policy.is_allowed("not-example.com"))
+
     def test_native_policy_rejects_noncanonical_domains(self):
         with self.assertRaisesRegex(ValueError, "canonical lowercase ASCII"):
             DomainPolicy(["Example.com"], 1)
+
+    def test_rust_status_classifier_returns_technical_categories(self):
+        self.assertEqual(classify_http_status(200), "success")
+        self.assertEqual(classify_http_status(302), "redirection")
+        self.assertEqual(classify_http_status(404), "client_error")
+        self.assertEqual(classify_http_status(503), "server_error")
+        self.assertEqual(classify_http_status(99), "invalid")
+        self.assertTrue(is_retryable_http_status(429))
+        self.assertTrue(is_retryable_http_status(503))
+        self.assertFalse(is_retryable_http_status(404))
+        self.assertEqual(parse_retry_after("120"), 120)
+        self.assertIsNone(parse_retry_after("Wed, 21 Oct 2015 07:28:00 GMT"))
 
 
 class CLITests(unittest.TestCase):
@@ -155,8 +181,22 @@ class ValidatorTests(unittest.TestCase):
     def test_public_html_is_reported_as_technical_data(self):
         result = self.validator.validate("https://example.com/")
         self.assertEqual(result.outcome, "ok")
+        self.assertEqual(result.http_status_class, "success")
+        self.assertFalse(result.http_retryable_hint)
         self.assertEqual(result.title, "Service status")
         self.assertIn("INCONCLUSIVO", result.conclusion)
+
+    def test_numeric_retry_after_is_reported_without_retrying(self):
+        def responder(url, *args):
+            self.requests.append(url)
+            return _Response(429, {"retry-after": "120"}, b"")
+
+        self.validator._requester = responder
+        result = self.validator.validate("https://example.com/")
+        self.assertEqual(result.http_status_class, "client_error")
+        self.assertTrue(result.http_retryable_hint)
+        self.assertEqual(result.retry_after_seconds, 120)
+        self.assertEqual(self.requests, ["https://example.com/"])
 
     def test_redirect_cycle_is_blocked_by_native_chain_state(self):
         def redirect_to_same_url(url, *args):

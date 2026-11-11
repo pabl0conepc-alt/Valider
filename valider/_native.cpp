@@ -1,12 +1,18 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <new>
 #include <string>
 #include <unordered_set>
 #include <utility>
-#include <vector>
+
+extern "C" std::int32_t valider_http_status_class(std::uint16_t status);
+extern "C" bool valider_http_status_retryable(std::uint16_t status);
+extern "C" bool valider_parse_retry_after(
+    const std::uint8_t* value, std::size_t length, std::uint64_t* seconds_out);
 
 namespace {
 
@@ -14,7 +20,7 @@ constexpr Py_ssize_t kMaximumRedirects = 10;
 
 struct DomainPolicy {
     PyObject_HEAD
-    std::vector<std::string>* domains;
+    std::unordered_set<std::string>* domains;
     std::unordered_set<std::string>* visited_urls;
     Py_ssize_t maximum_redirects;
     Py_ssize_t redirect_count;
@@ -112,7 +118,7 @@ int policy_init(DomainPolicy* self, PyObject* args, PyObject* kwargs) {
     }
 
     try {
-        std::vector<std::string> validated_domains;
+        std::unordered_set<std::string> validated_domains;
         const Py_ssize_t count = PySequence_Fast_GET_SIZE(sequence);
         if (count == 0) {
             Py_DECREF(sequence);
@@ -134,11 +140,12 @@ int policy_init(DomainPolicy* self, PyObject* args, PyObject* kwargs) {
                     "domains must be canonical lowercase ASCII domain names");
                 return -1;
             }
-            validated_domains.push_back(std::move(domain));
+            validated_domains.insert(std::move(domain));
         }
         Py_DECREF(sequence);
 
-        auto new_domains = std::make_unique<std::vector<std::string>>(std::move(validated_domains));
+        auto new_domains =
+            std::make_unique<std::unordered_set<std::string>>(std::move(validated_domains));
         auto new_visited_urls = std::make_unique<std::unordered_set<std::string>>();
         delete self->domains;
         delete self->visited_urls;
@@ -180,15 +187,16 @@ PyObject* policy_is_allowed(DomainPolicy* self, PyObject* value) {
         Py_RETURN_FALSE;
     }
 
-    for (const std::string& domain : *self->domains) {
-        if (host == domain) {
+    std::size_t label_start = 0;
+    while (label_start < host.size()) {
+        if (self->domains->find(host.substr(label_start)) != self->domains->end()) {
             Py_RETURN_TRUE;
         }
-        if (host.size() > domain.size() &&
-            host.compare(host.size() - domain.size(), domain.size(), domain) == 0 &&
-            host[host.size() - domain.size() - 1] == '.') {
-            Py_RETURN_TRUE;
+        const std::size_t dot = host.find('.', label_start);
+        if (dot == std::string::npos) {
+            break;
         }
+        label_start = dot + 1;
     }
     Py_RETURN_FALSE;
 }
@@ -236,12 +244,77 @@ PyMethodDef policy_methods[] = {
 
 PyTypeObject policy_type = {PyVarObject_HEAD_INIT(nullptr, 0)};
 
+PyObject* classify_http_status(PyObject*, PyObject* value) {
+    const long status = PyLong_AsLong(value);
+    if (status == -1 && PyErr_Occurred()) {
+        return nullptr;
+    }
+    if (status < 0 || status > 65535) {
+        PyErr_SetString(PyExc_ValueError, "HTTP status must be between 0 and 65535");
+        return nullptr;
+    }
+
+    static const char* names[] = {
+        "invalid", "informational", "success", "redirection", "client_error", "server_error"
+    };
+    const std::int32_t category =
+        valider_http_status_class(static_cast<std::uint16_t>(status));
+    if (category < 0 || category >= static_cast<std::int32_t>(sizeof(names) / sizeof(names[0]))) {
+        PyErr_SetString(PyExc_RuntimeError, "Rust returned an invalid HTTP status class");
+        return nullptr;
+    }
+    return PyUnicode_FromString(names[category]);
+}
+
+PyObject* is_retryable_http_status(PyObject*, PyObject* value) {
+    const long status = PyLong_AsLong(value);
+    if (status == -1 && PyErr_Occurred()) {
+        return nullptr;
+    }
+    if (status < 0 || status > 65535) {
+        PyErr_SetString(PyExc_ValueError, "HTTP status must be between 0 and 65535");
+        return nullptr;
+    }
+    return PyBool_FromLong(
+        valider_http_status_retryable(static_cast<std::uint16_t>(status)));
+}
+
+PyObject* parse_retry_after(PyObject*, PyObject* value) {
+    if (!PyUnicode_Check(value)) {
+        PyErr_SetString(PyExc_TypeError, "Retry-After value must be a string");
+        return nullptr;
+    }
+    Py_ssize_t length = 0;
+    const char* text = PyUnicode_AsUTF8AndSize(value, &length);
+    if (text == nullptr) {
+        return nullptr;
+    }
+
+    std::uint64_t seconds = 0;
+    if (!valider_parse_retry_after(
+            reinterpret_cast<const std::uint8_t*>(text),
+            static_cast<std::size_t>(length), &seconds)) {
+        Py_RETURN_NONE;
+    }
+    return PyLong_FromUnsignedLongLong(seconds);
+}
+
+PyMethodDef module_methods[] = {
+    {"classify_http_status", classify_http_status, METH_O,
+     "Classify an HTTP response code using the Rust analysis core."},
+    {"is_retryable_http_status", is_retryable_http_status, METH_O,
+     "Return a technical retryability hint without performing retries."},
+    {"parse_retry_after", parse_retry_after, METH_O,
+     "Parse a numeric Retry-After delay; return None for unsupported values."},
+    {nullptr, nullptr, 0, nullptr},
+};
+
 PyModuleDef module_definition = {
     PyModuleDef_HEAD_INIT,
     "_native",
-    "C++ authorization and redirect-chain policy primitives.",
+    "C++ authorization policy and Rust HTTP status classification.",
     -1,
-    nullptr,
+    module_methods,
 };
 
 }  // namespace

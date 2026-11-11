@@ -25,8 +25,10 @@ python -m unittest discover -s tests -v
 
 Keep CLI help and documentation aligned with the actual argument syntax. Add
 focused tests for new behavior and safety boundaries. Describe user-visible
-changes in `CHANGELOG.md`. The package includes a C++17 extension; local builds
-need a C++ compiler and Python development headers.
+changes in `CHANGELOG.md`. The package includes C++17 and Rust native code;
+local builds need C++, Rust, and Python development toolchains. Run
+`cargo test --manifest-path rust/Cargo.toml` along with the Python suite when
+changing the Rust core.
 
 ## Pull requests
 

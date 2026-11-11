@@ -82,13 +82,27 @@ def _load_urls(arguments: argparse.Namespace) -> list[str]:
 
 def _render(results: list[URLResult]) -> None:
     table = Table(title="Valider — technical diagnostics")
-    for column in ("URL", "Outcome", "HTTP", "Final URL", "DNS", "TLS", "Title"):
+    for column in (
+        "URL",
+        "Outcome",
+        "HTTP",
+        "HTTP class",
+        "Retry hint",
+        "Retry-After",
+        "Final URL",
+        "DNS",
+        "TLS",
+        "Title",
+    ):
         table.add_column(column, overflow="fold")
     for item in results:
         table.add_row(
             item.url,
             item.outcome,
             str(item.http_status) if item.http_status is not None else "N/A",
+            item.http_status_class or "N/A",
+            str(item.http_retryable_hint) if item.http_retryable_hint is not None else "N/A",
+            f"{item.retry_after_seconds}s" if item.retry_after_seconds is not None else "N/A",
             item.final_url or "N/A",
             ", ".join(item.dns_ips) or "N/A",
             item.tls_version or "N/A",
