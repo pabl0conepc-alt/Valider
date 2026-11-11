@@ -7,7 +7,6 @@
 #include <string>
 #include <unordered_set>
 #include <utility>
-#include <vector>
 
 extern "C" std::int32_t valider_http_status_class(std::uint16_t status);
 extern "C" bool valider_http_status_retryable(std::uint16_t status);
@@ -18,7 +17,7 @@ constexpr Py_ssize_t kMaximumRedirects = 10;
 
 struct DomainPolicy {
     PyObject_HEAD
-    std::vector<std::string>* domains;
+    std::unordered_set<std::string>* domains;
     std::unordered_set<std::string>* visited_urls;
     Py_ssize_t maximum_redirects;
     Py_ssize_t redirect_count;
@@ -116,7 +115,7 @@ int policy_init(DomainPolicy* self, PyObject* args, PyObject* kwargs) {
     }
 
     try {
-        std::vector<std::string> validated_domains;
+        std::unordered_set<std::string> validated_domains;
         const Py_ssize_t count = PySequence_Fast_GET_SIZE(sequence);
         if (count == 0) {
             Py_DECREF(sequence);
@@ -138,11 +137,12 @@ int policy_init(DomainPolicy* self, PyObject* args, PyObject* kwargs) {
                     "domains must be canonical lowercase ASCII domain names");
                 return -1;
             }
-            validated_domains.push_back(std::move(domain));
+            validated_domains.insert(std::move(domain));
         }
         Py_DECREF(sequence);
 
-        auto new_domains = std::make_unique<std::vector<std::string>>(std::move(validated_domains));
+        auto new_domains =
+            std::make_unique<std::unordered_set<std::string>>(std::move(validated_domains));
         auto new_visited_urls = std::make_unique<std::unordered_set<std::string>>();
         delete self->domains;
         delete self->visited_urls;
@@ -184,15 +184,16 @@ PyObject* policy_is_allowed(DomainPolicy* self, PyObject* value) {
         Py_RETURN_FALSE;
     }
 
-    for (const std::string& domain : *self->domains) {
-        if (host == domain) {
+    std::size_t label_start = 0;
+    while (label_start < host.size()) {
+        if (self->domains->find(host.substr(label_start)) != self->domains->end()) {
             Py_RETURN_TRUE;
         }
-        if (host.size() > domain.size() &&
-            host.compare(host.size() - domain.size(), domain.size(), domain) == 0 &&
-            host[host.size() - domain.size() - 1] == '.') {
-            Py_RETURN_TRUE;
+        const std::size_t dot = host.find('.', label_start);
+        if (dot == std::string::npos) {
+            break;
         }
+        label_start = dot + 1;
     }
     Py_RETURN_FALSE;
 }

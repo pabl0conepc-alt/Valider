@@ -35,6 +35,15 @@ class NativePolicyTests(unittest.TestCase):
         self.assertTrue(policy.visit_url("https://example.com/"))
         self.assertTrue(policy.follow_redirect())
 
+    def test_domain_policy_matches_against_a_large_allowlist(self):
+        domains = [f"site-{index}.example" for index in range(500)]
+        domains.append("example.com")
+        policy = DomainPolicy(domains, 2)
+        policy.begin()
+        self.assertTrue(policy.is_allowed("api.example.com"))
+        self.assertTrue(policy.is_allowed("site-499.example"))
+        self.assertFalse(policy.is_allowed("not-example.com"))
+
     def test_native_policy_rejects_noncanonical_domains(self):
         with self.assertRaisesRegex(ValueError, "canonical lowercase ASCII"):
             DomainPolicy(["Example.com"], 1)
