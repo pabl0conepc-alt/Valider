@@ -8,10 +8,32 @@ from pathlib import Path
 
 from valider.exporters import export_results
 from valider.cli import _load_urls, _parser
+from valider._native import DomainPolicy
 from valider.validator import URLResult, URLValidator, _Response
 
 
 PUBLIC_IP = "93.184.216.34"
+
+
+class NativePolicyTests(unittest.TestCase):
+    def test_domain_matching_and_redirect_state_are_bounded(self):
+        policy = DomainPolicy(["example.com"], 1)
+        policy.begin()
+        self.assertTrue(policy.is_allowed("example.com"))
+        self.assertTrue(policy.is_allowed("api.example.com"))
+        self.assertFalse(policy.is_allowed("not-example.com"))
+        self.assertTrue(policy.visit_url("https://example.com/"))
+        self.assertFalse(policy.visit_url("https://example.com/"))
+        self.assertTrue(policy.follow_redirect())
+        self.assertFalse(policy.follow_redirect())
+
+        policy.begin()
+        self.assertTrue(policy.visit_url("https://example.com/"))
+        self.assertTrue(policy.follow_redirect())
+
+    def test_native_policy_rejects_noncanonical_domains(self):
+        with self.assertRaisesRegex(ValueError, "canonical lowercase ASCII"):
+            DomainPolicy(["Example.com"], 1)
 
 
 class CLITests(unittest.TestCase):
@@ -135,6 +157,17 @@ class ValidatorTests(unittest.TestCase):
         self.assertEqual(result.outcome, "ok")
         self.assertEqual(result.title, "Service status")
         self.assertIn("INCONCLUSIVO", result.conclusion)
+
+    def test_redirect_cycle_is_blocked_by_native_chain_state(self):
+        def redirect_to_same_url(url, *args):
+            self.requests.append(url)
+            return _Response(302, {"location": "https://example.com/"}, b"")
+
+        self.validator._requester = redirect_to_same_url
+        result = self.validator.validate("https://example.com/")
+        self.assertEqual(result.outcome, "erro")
+        self.assertIn("Ciclo de redirecionamento", result.error)
+        self.assertEqual(len(self.requests), 1)
 
 
 class ExportTests(unittest.TestCase):

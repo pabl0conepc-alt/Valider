@@ -30,7 +30,7 @@ managed system Python:
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-venv git
+sudo apt install -y build-essential python3-dev python3 python3-venv git
 git clone <REPOSITORY_URL>
 cd Valider
 python3 -m venv .venv
@@ -120,15 +120,22 @@ be checked successfully.
 | `SECURITY.md` | Security boundaries and instructions for reporting vulnerabilities. |
 | `CODE_OF_CONDUCT.md` | Standards for respectful and constructive participation. |
 | `AUTHORS.md` | Records verified authorship and contributor acknowledgements. |
+| `setup.py` | Builds the C++17 policy extension as part of Python package installation. |
+| `valider/_native.cpp` | Implements typed domain authorization and redirect-chain state. |
 
 ## Development and tests
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements.txt
+python -m pip install -e .
 python -m unittest discover -s tests -v
 ```
+
+Building the package requires a C++17 compiler and Python development headers.
+The native policy component enforces canonical domain matching, redirect
+budgets, and per-URL cycle tracking. DNS resolution, global-address checks,
+pinned HTTP/TLS connections, and response parsing remain in Python.
 
 Tests use injected DNS/HTTP functions and do not send requests to external
 hosts. Contributions must keep that property.
