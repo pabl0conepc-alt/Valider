@@ -1,14 +1,64 @@
 import csv
+import contextlib
+import io
 import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from valider.exporters import export_results
+from valider.cli import _load_urls, _parser
 from valider.validator import URLResult, URLValidator, _Response
 
 
 PUBLIC_IP = "93.184.216.34"
+
+
+class CLITests(unittest.TestCase):
+    def test_parser_accepts_domain_and_positional_url(self):
+        args = _parser().parse_args(
+            ["--allow-domain", "championat.com", "https://www.championat.com/user/pdr"]
+        )
+        self.assertEqual(args.allow_domain, ["championat.com"])
+        self.assertEqual(_load_urls(args), ["https://www.championat.com/user/pdr"])
+
+    def test_missing_url_explains_positional_and_file_usage(self):
+        args = _parser().parse_args(["--allow-domain", "championat.com"])
+        with self.assertRaisesRegex(ValueError, "No URL provided.*--input FILE"):
+            _load_urls(args)
+
+    def test_input_reads_urls_from_a_local_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "links.txt"
+            path.write_text(
+                "# authorized test URLs\nhttps://championat.com/a\n\nhttps://championat.com/b\n",
+                encoding="utf-8",
+            )
+            args = _parser().parse_args(
+                ["--allow-domain", "championat.com", "--input", str(path)]
+            )
+            self.assertEqual(
+                _load_urls(args),
+                ["https://championat.com/a", "https://championat.com/b"],
+            )
+
+    def test_input_url_is_rejected_with_positional_usage_hint(self):
+        args = _parser().parse_args(
+            ["--allow-domain", "championat.com", "--input", "https://championat.com/user/pdr"]
+        )
+        with self.assertRaisesRegex(ValueError, "--input expects a local text-file path"):
+            _load_urls(args)
+
+    def test_misspelled_allow_domain_option_suggests_correct_option(self):
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit) as raised:
+            _parser().parse_args(["--allow-dommain", "championat.com", "https://championat.com"])
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("did you mean --allow-domain?", stderr.getvalue())
+
+    def test_url_passed_as_allow_domain_is_rejected_as_wrong_argument(self):
+        with self.assertRaisesRegex(ValueError, "--allow-domain expects a domain name only"):
+            URLValidator(["https://www.championat.com/user/pdr"])
 
 
 class ValidatorTests(unittest.TestCase):

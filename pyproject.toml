@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "valider"
 version = "1.0.0"
-description = "Diagnóstico técnico de URLs em domínios autorizados"
+description = "Authorized technical URL diagnostics"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = ["rich>=13.7,<15"]

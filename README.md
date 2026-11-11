@@ -1,26 +1,37 @@
 # Valider
 
-Valider é uma CLI Python para diagnóstico técnico de URLs em domínios que você
-controla ou tem autorização explícita para testar. Ela informa status HTTP,
-redirecionamentos, DNS, dados básicos de TLS e título/descrição neutros de HTML.
-Os resultados **não determinam se um perfil ou uma conta existe**; essa conclusão
-é sempre apresentada como **INCONCLUSIVO**.
+Valider is a Python command-line tool for **authorized technical URL diagnostics**.
+It reports HTTP status, redirects, DNS answers, basic TLS certificate details,
+and neutral HTML title and description metadata.
 
-Valider não procura perfis, não classifica pessoas ou contas e não contorna
-autenticação, CAPTCHA ou proteções. A allowlist explícita é obrigatória. Antes de
-cada conexão, o destino é resolvido novamente e todos os endereços retornados
-precisam ser globais; a conexão é fixada ao IP validado. Redirecionamentos passam
-pelas mesmas verificações, evitando acesso a loopback, redes privadas,
-link-local e destinos não globais. Somente HTTP/HTTPS nas portas padrão são
-aceitos. Há intervalo mínimo de um segundo entre requisições e timeout máximo de
-30 segundos.
+Valider does **not** discover or classify people, search for profiles, or infer
+whether an account exists. Account/profile existence is always **INCONCLUSIVE**.
+It does not bypass authentication, CAPTCHAs, or other protections.
 
-## Instalação no Kali Linux
+## Safety and authorization
+
+- An explicit `--allow-domain` entry is required for every run. Each entry
+  authorizes that exact domain and its subdomains; use only domains you control
+  or have explicit permission to test.
+- Only HTTP and HTTPS on their default ports are accepted.
+- DNS is resolved before every request, including every redirect. All resolved
+  addresses must be globally routable, and connections are pinned to a validated
+  address. Loopback, private, link-local, and other non-global destinations are
+  blocked.
+- Redirect targets must also be on the allowlist. No request is made to an
+  unauthorized host.
+- Requests are separated by at least one second. Timeouts are limited to
+  1–30 seconds, redirect chains to at most 10 hops, and each run to 1,000 URLs.
+
+## Installation on Kali Linux
+
+Use a virtual environment so installation does not modify Kali's externally
+managed system Python:
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-venv
-git clone <URL_DO_REPOSITORIO>
+sudo apt install -y python3 python3-venv git
+git clone <REPOSITORY_URL>
 cd Valider
 python3 -m venv .venv
 source .venv/bin/activate
@@ -29,50 +40,95 @@ python -m pip install -r requirements.txt
 python -m pip install .
 ```
 
-O ambiente virtual evita alterações na instalação Python gerenciada pelo Kali.
+## Usage
 
-## Uso autorizado
+### Check one authorized URL
 
-Autorize somente domínios próprios ou para os quais você tenha autorização
-explícita. `--allow-domain` pode ser repetido; cada entrada autoriza o domínio
-exato e seus subdomínios. Sem uma allowlist, a ferramenta não executa.
+The domain goes after `--allow-domain`; the URL is a separate positional
+argument:
 
 ```bash
-valider --allow-domain exemplo.com https://exemplo.com/
-valider --allow-domain exemplo.com --allow-domain exemplo.net \
-  https://www.exemplo.com/ https://exemplo.net/status
+valider --allow-domain championat.com https://www.championat.com/user/pdr
 ```
 
-Para processar um arquivo UTF-8 com uma URL por linha (linhas vazias e linhas
-iniciadas por `#` são ignoradas):
+`--allow-domain` accepts a **domain name only**, not a URL. To check several
+domains, repeat the option. URLs must still be passed separately:
 
 ```bash
-valider --allow-domain exemplo.com --input urls.txt
+valider \
+  --allow-domain example.com \
+  --allow-domain example.net \
+  https://www.example.com/status https://example.net/health
 ```
 
-Limite o timeout entre 1 e 30 segundos. O intervalo mínimo é fixo em um segundo
-por requisição e são aceitas no máximo 1.000 URLs por execução:
+### Check URLs from a file
 
-```bash
-valider --allow-domain exemplo.com --timeout 8 --max-redirects 3 https://exemplo.com/
+`--input` takes a **local text-file path**, not a URL. Put one URL per line;
+blank lines and lines beginning with `#` are ignored:
+
+```text
+# links.txt
+https://example.com/status
+https://www.example.com/health
 ```
 
-Exportação para JSON, TXT ou CSV:
-
 ```bash
-valider --allow-domain exemplo.com --input urls.txt --format json --output resultados.json
-valider --allow-domain exemplo.com --input urls.txt --format csv --output resultados.csv
-valider --allow-domain exemplo.com https://exemplo.com/ --format txt --output resultados.txt
+valider --allow-domain example.com --input links.txt
 ```
 
-Sem `--output`, os resultados são exibidos no terminal usando Rich. URLs fora da
-allowlist, malformadas, com portas não padrão ou que resolvam para endereços não
-globais são rejeitadas sem conexão. Respostas HTTP e metadados HTML são dados
-técnicos e não devem ser interpretados como confirmação de existência de contas.
+Input URLs are subject to the same allowlist and network checks as positional
+URLs. Files may contain up to 1,000 URLs per run.
 
-## Desenvolvimento e testes
+### Tune limits and export results
 
 ```bash
+valider --allow-domain example.com \
+  --timeout 8 --max-redirects 3 https://example.com/status
+
+valider --allow-domain example.com --input links.txt \
+  --format json --output results.json
+valider --allow-domain example.com --input links.txt \
+  --format csv --output results.csv
+valider --allow-domain example.com https://example.com/ \
+  --format txt --output results.txt
+```
+
+Supported output formats are `json`, `txt`, and `csv`. `--format` and
+`--output` must be supplied together. Without them, Valider displays a Rich
+terminal table. A nonzero exit status indicates that at least one URL could not
+be checked successfully.
+
+### Common command-line errors
+
+- `--allow-domain` needs a domain value **and** at least one URL (or `--input
+  FILE`); it does not take the URL as its value.
+- Use `--allow-domain`, not the misspelled `--allow-dommain`.
+- `--input links.txt` reads a file. To check a URL directly, put it after the
+  options as a positional argument.
+- URLs outside the allowlist, malformed URLs, and URLs resolving to non-global
+  addresses are rejected before connecting.
+
+## Project files
+
+| File | Purpose |
+| --- | --- |
+| `README.md` | Project overview, safety model, installation, and usage guide. |
+| `LICENSE` | States the project's current licensing status and where to ask about reuse. |
+| `.gitignore` | Excludes local environments, caches, and generated build artifacts. |
+| `CONTRIBUTING.md` | Contribution workflow, coding expectations, and test instructions. |
+| `CHANGELOG.md` | Human-readable history of released changes. |
+| `SECURITY.md` | Security boundaries and instructions for reporting vulnerabilities. |
+| `CODE_OF_CONDUCT.md` | Standards for respectful and constructive participation. |
+| `AUTHORS.md` | Records verified authorship and contributor acknowledgements. |
+
+## Development and tests
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 python -m pip install -r requirements.txt
 python -m unittest discover -s tests -v
 ```
+
+Tests use injected DNS/HTTP functions and do not send requests to external
+hosts. Contributions must keep that property.
