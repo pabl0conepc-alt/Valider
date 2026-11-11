@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "valider"
+version = "1.0.0"
+description = "Diagnóstico técnico de URLs em domínios autorizados"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["rich>=13.7,<15"]
+
+[project.scripts]
+valider = "valider.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["valider*"]
