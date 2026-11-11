@@ -12,6 +12,7 @@ from valider._native import (
     DomainPolicy,
     classify_http_status,
     is_retryable_http_status,
+    parse_retry_after,
 )
 from valider.validator import URLResult, URLValidator, _Response
 
@@ -57,6 +58,8 @@ class NativePolicyTests(unittest.TestCase):
         self.assertTrue(is_retryable_http_status(429))
         self.assertTrue(is_retryable_http_status(503))
         self.assertFalse(is_retryable_http_status(404))
+        self.assertEqual(parse_retry_after("120"), 120)
+        self.assertIsNone(parse_retry_after("Wed, 21 Oct 2015 07:28:00 GMT"))
 
 
 class CLITests(unittest.TestCase):
@@ -182,6 +185,18 @@ class ValidatorTests(unittest.TestCase):
         self.assertFalse(result.http_retryable_hint)
         self.assertEqual(result.title, "Service status")
         self.assertIn("INCONCLUSIVO", result.conclusion)
+
+    def test_numeric_retry_after_is_reported_without_retrying(self):
+        def responder(url, *args):
+            self.requests.append(url)
+            return _Response(429, {"retry-after": "120"}, b"")
+
+        self.validator._requester = responder
+        result = self.validator.validate("https://example.com/")
+        self.assertEqual(result.http_status_class, "client_error")
+        self.assertTrue(result.http_retryable_hint)
+        self.assertEqual(result.retry_after_seconds, 120)
+        self.assertEqual(self.requests, ["https://example.com/"])
 
     def test_redirect_cycle_is_blocked_by_native_chain_state(self):
         def redirect_to_same_url(url, *args):

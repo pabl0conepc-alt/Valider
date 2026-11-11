@@ -8,7 +8,7 @@ Notable project changes are recorded here.
   integrated with the Python URL validator; allowlist membership uses a
   hash-indexed domain set.
 - Added Rust-based HTTP status-class reporting and a non-operative retryability
-  hint for common transient statuses.
+  hint for common transient statuses, including numeric `Retry-After` values.
 
 ## 1.0.0
 

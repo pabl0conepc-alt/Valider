@@ -1,6 +1,7 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <new>
@@ -10,6 +11,8 @@
 
 extern "C" std::int32_t valider_http_status_class(std::uint16_t status);
 extern "C" bool valider_http_status_retryable(std::uint16_t status);
+extern "C" bool valider_parse_retry_after(
+    const std::uint8_t* value, std::size_t length, std::uint64_t* seconds_out);
 
 namespace {
 
@@ -276,11 +279,33 @@ PyObject* is_retryable_http_status(PyObject*, PyObject* value) {
         valider_http_status_retryable(static_cast<std::uint16_t>(status)));
 }
 
+PyObject* parse_retry_after(PyObject*, PyObject* value) {
+    if (!PyUnicode_Check(value)) {
+        PyErr_SetString(PyExc_TypeError, "Retry-After value must be a string");
+        return nullptr;
+    }
+    Py_ssize_t length = 0;
+    const char* text = PyUnicode_AsUTF8AndSize(value, &length);
+    if (text == nullptr) {
+        return nullptr;
+    }
+
+    std::uint64_t seconds = 0;
+    if (!valider_parse_retry_after(
+            reinterpret_cast<const std::uint8_t*>(text),
+            static_cast<std::size_t>(length), &seconds)) {
+        Py_RETURN_NONE;
+    }
+    return PyLong_FromUnsignedLongLong(seconds);
+}
+
 PyMethodDef module_methods[] = {
     {"classify_http_status", classify_http_status, METH_O,
      "Classify an HTTP response code using the Rust analysis core."},
     {"is_retryable_http_status", is_retryable_http_status, METH_O,
      "Return a technical retryability hint without performing retries."},
+    {"parse_retry_after", parse_retry_after, METH_O,
+     "Parse a numeric Retry-After delay; return None for unsupported values."},
     {nullptr, nullptr, 0, nullptr},
 };
 

@@ -136,7 +136,8 @@ python -m unittest discover -s tests -v
 Building the package requires C++17, Rust, and Python development toolchains.
 The C++ policy component enforces canonical domain matching and redirect-chain
 limits. Rust classifies HTTP status codes and adds a retryability hint for
-common transient responses; Valider does not retry automatically. DNS,
+common transient responses. Numeric `Retry-After` values are reported as
+technical hints; Valider does not wait or retry automatically. DNS,
 global-address checks, and pinned HTTP/TLS connections remain in Python.
 
 Tests use injected DNS/HTTP functions and do not send requests to external
