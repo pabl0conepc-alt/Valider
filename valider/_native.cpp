@@ -10,6 +10,7 @@
 #include <vector>
 
 extern "C" std::int32_t valider_http_status_class(std::uint16_t status);
+extern "C" bool valider_http_status_retryable(std::uint16_t status);
 
 namespace {
 
@@ -261,9 +262,24 @@ PyObject* classify_http_status(PyObject*, PyObject* value) {
     return PyUnicode_FromString(names[category]);
 }
 
+PyObject* is_retryable_http_status(PyObject*, PyObject* value) {
+    const long status = PyLong_AsLong(value);
+    if (status == -1 && PyErr_Occurred()) {
+        return nullptr;
+    }
+    if (status < 0 || status > 65535) {
+        PyErr_SetString(PyExc_ValueError, "HTTP status must be between 0 and 65535");
+        return nullptr;
+    }
+    return PyBool_FromLong(
+        valider_http_status_retryable(static_cast<std::uint16_t>(status)));
+}
+
 PyMethodDef module_methods[] = {
     {"classify_http_status", classify_http_status, METH_O,
      "Classify an HTTP response code using the Rust analysis core."},
+    {"is_retryable_http_status", is_retryable_http_status, METH_O,
+     "Return a technical retryability hint without performing retries."},
     {nullptr, nullptr, 0, nullptr},
 };
 

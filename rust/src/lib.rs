@@ -29,9 +29,16 @@ pub extern "C" fn valider_http_status_class(status: u16) -> i32 {
     }
 }
 
+#[no_mangle]
+pub extern "C" fn valider_http_status_retryable(status: u16) -> bool {
+    matches!(status, 408 | 425 | 429 | 500 | 502 | 503 | 504)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{valider_http_status_class, HttpStatusClass};
+    use super::{
+        valider_http_status_class, valider_http_status_retryable, HttpStatusClass,
+    };
 
     #[test]
     fn classifies_http_status_ranges() {
@@ -42,5 +49,14 @@ mod tests {
         assert_eq!(valider_http_status_class(503), HttpStatusClass::ServerError as i32);
         assert_eq!(valider_http_status_class(99), HttpStatusClass::Invalid as i32);
         assert_eq!(valider_http_status_class(600), HttpStatusClass::Invalid as i32);
+    }
+
+    #[test]
+    fn identifies_common_retryable_statuses_without_retrying() {
+        for status in [408, 425, 429, 500, 502, 503, 504] {
+            assert!(valider_http_status_retryable(status));
+        }
+        assert!(!valider_http_status_retryable(200));
+        assert!(!valider_http_status_retryable(404));
     }
 }

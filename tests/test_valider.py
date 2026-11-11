@@ -8,7 +8,11 @@ from pathlib import Path
 
 from valider.exporters import export_results
 from valider.cli import _load_urls, _parser
-from valider._native import DomainPolicy, classify_http_status
+from valider._native import (
+    DomainPolicy,
+    classify_http_status,
+    is_retryable_http_status,
+)
 from valider.validator import URLResult, URLValidator, _Response
 
 
@@ -41,6 +45,9 @@ class NativePolicyTests(unittest.TestCase):
         self.assertEqual(classify_http_status(404), "client_error")
         self.assertEqual(classify_http_status(503), "server_error")
         self.assertEqual(classify_http_status(99), "invalid")
+        self.assertTrue(is_retryable_http_status(429))
+        self.assertTrue(is_retryable_http_status(503))
+        self.assertFalse(is_retryable_http_status(404))
 
 
 class CLITests(unittest.TestCase):
@@ -163,6 +170,7 @@ class ValidatorTests(unittest.TestCase):
         result = self.validator.validate("https://example.com/")
         self.assertEqual(result.outcome, "ok")
         self.assertEqual(result.http_status_class, "success")
+        self.assertFalse(result.http_retryable_hint)
         self.assertEqual(result.title, "Service status")
         self.assertIn("INCONCLUSIVO", result.conclusion)
 

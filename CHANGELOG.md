@@ -6,7 +6,8 @@ Notable project changes are recorded here.
 
 - Added a C++17 policy core with typed allowlist and redirect-chain state,
   integrated with the Python URL validator.
-- Added Rust-based HTTP status-class reporting for neutral technical summaries.
+- Added Rust-based HTTP status-class reporting and a non-operative retryability
+  hint for common transient statuses.
 
 ## 1.0.0
 
