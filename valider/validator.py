@@ -12,6 +12,8 @@ from html.parser import HTMLParser
 from typing import Callable, Iterable, Optional
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
+from ._native import DomainPolicy
+
 MAX_BODY_BYTES = 1_048_576
 MAX_URLS = 1_000
 MAX_REDIRECTS = 10
@@ -227,14 +229,12 @@ class URLValidator:
         self.allowed_domains = tuple(dict.fromkeys(domains))
         self.timeout = float(timeout)
         self.max_redirects = max_redirects
+        self._policy = DomainPolicy(self.allowed_domains, max_redirects)
         self._resolver = resolver
         self._requester = requester
         self._clock = clock
         self._sleeper = sleeper
         self._last_request_at: Optional[float] = None
-
-    def _is_allowed(self, host: str) -> bool:
-        return any(host == domain or host.endswith("." + domain) for domain in self.allowed_domains)
 
     def _wait_for_rate_limit(self) -> None:
         now = self._clock()
@@ -260,16 +260,15 @@ class URLValidator:
     def validate(self, value: str) -> URLResult:
         result = URLResult(url=value, outcome="erro")
         try:
+            self._policy.begin()
             current, host, port, scheme = _parse_url(value)
-            if not self._is_allowed(host):
+            if not self._policy.is_allowed(host):
                 raise PermissionError(f"Domínio fora da allowlist: {host}")
-            visited: set[str] = set()
             while True:
-                if current in visited:
+                if not self._policy.visit_url(current):
                     raise ValueError("Ciclo de redirecionamento detectado.")
-                visited.add(current)
                 current, host, port, scheme = _parse_url(current)
-                if not self._is_allowed(host):
+                if not self._policy.is_allowed(host):
                     raise PermissionError(f"Redirecionamento fora da allowlist: {host}")
                 addresses = self._resolve_public(host, port)
                 result.dns_ips = addresses
@@ -284,11 +283,11 @@ class URLValidator:
                     self._parse_metadata(result, response)
                     result.outcome = "ok"
                     return result
-                if result.redirects >= self.max_redirects:
+                if not self._policy.follow_redirect():
                     raise ValueError("Limite de redirecionamentos excedido.")
                 next_url = urljoin(current, location)
                 parsed_next, next_host, _, _ = _parse_url(next_url)
-                if not self._is_allowed(next_host):
+                if not self._policy.is_allowed(next_host):
                     raise PermissionError(f"Redirecionamento fora da allowlist: {next_host}")
                 current = parsed_next
                 result.redirects += 1

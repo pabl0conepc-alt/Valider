@@ -19,13 +19,14 @@ safety boundaries.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements.txt
+python -m pip install -e .
 python -m unittest discover -s tests -v
 ```
 
 Keep CLI help and documentation aligned with the actual argument syntax. Add
 focused tests for new behavior and safety boundaries. Describe user-visible
-changes in `CHANGELOG.md`.
+changes in `CHANGELOG.md`. The package includes a C++17 extension; local builds
+need a C++ compiler and Python development headers.
 
 ## Pull requests
 
